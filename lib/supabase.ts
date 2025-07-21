@@ -5,8 +5,29 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// For server-side operations that need elevated permissions
-export const supabaseAdmin = createClient(
-  supabaseUrl,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Database types
+export interface DatabaseCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  icon: string | null;
+  icon_color: string | null;
+  order_index: number;
+  created_at: string;
+}
+
+export interface DatabasePage {
+  id: string;
+  title: string;
+  slug: string;
+  description: string;
+  category: string;
+  tags: string[];
+  content: string;
+  icon: string | null;
+  icon_color: string | null;
+  order_index: number;
+  created_at: string;
+  updated_at: string;
+}

@@ -1,130 +1,192 @@
+import { supabase, DatabaseCategory, DatabasePage } from './supabase';
 import { Category, Page, AppState } from '@/types';
 
-// Check if we're in a browser environment
-const isBrowser = typeof window !== 'undefined';
-const STORAGE_KEY = 'atom-docs-data';
+// Transform database category to app category
+const transformCategory = (dbCategory: DatabaseCategory): Category => ({
+  id: dbCategory.id,
+  name: dbCategory.name,
+  slug: dbCategory.slug,
+  description: dbCategory.description,
+  icon: dbCategory.icon || undefined,
+  iconColor: dbCategory.icon_color || undefined,
+  order: dbCategory.order_index,
+  createdAt: dbCategory.created_at,
+});
 
-// Default data structure
-const defaultData: AppState = {
-  pages: [],
-  categories: []
-};
+// Transform app category to database category
+const transformCategoryForDB = (category: Category): Partial<DatabaseCategory> => ({
+  id: category.id,
+  name: category.name,
+  slug: category.slug,
+  description: category.description,
+  icon: category.icon || null,
+  icon_color: category.iconColor || null,
+  order_index: category.order,
+  created_at: category.createdAt,
+});
+
+// Transform database page to app page
+const transformPage = (dbPage: DatabasePage): Page => ({
+  id: dbPage.id,
+  title: dbPage.title,
+  slug: dbPage.slug,
+  description: dbPage.description,
+  category: dbPage.category,
+  tags: dbPage.tags,
+  content: dbPage.content,
+  icon: dbPage.icon || undefined,
+  iconColor: dbPage.icon_color || undefined,
+  order: dbPage.order_index,
+  createdAt: dbPage.created_at,
+  updatedAt: dbPage.updated_at,
+});
+
+// Transform app page to database page
+const transformPageForDB = (page: Page): Partial<DatabasePage> => ({
+  id: page.id,
+  title: page.title,
+  slug: page.slug,
+  description: page.description,
+  category: page.category,
+  tags: page.tags,
+  content: page.content,
+  icon: page.icon || null,
+  icon_color: page.iconColor || null,
+  order_index: page.order,
+  created_at: page.createdAt,
+  updated_at: page.updatedAt,
+});
 
 export async function getStorageData(): Promise<AppState> {
-  // In development, try to read from file system first
-  if (process.env.NODE_ENV === 'development' && !isBrowser) {
-    try {
-      const { promises: fs } = await import('fs');
-      const path = await import('path');
-      const DATA_FILE = path.join(process.cwd(), 'data.json');
-      const data = await fs.readFile(DATA_FILE, 'utf8');
-      const parsedData = JSON.parse(data);
-      
-      return {
-        pages: parsedData.pages || [],
-        categories: parsedData.categories || []
-      };
-    } catch (error) {
-      console.error('Error reading data file:', error);
-    }
-  }
+  try {
+    // Fetch categories
+    const { data: categoriesData, error: categoriesError } = await supabase
+      .from('categories')
+      .select('*')
+      .order('order_index');
 
-  // In browser environment (both dev and prod), use in-memory storage with persistence
-  if (isBrowser) {
-    // Check if we have data in sessionStorage first (survives page reloads)
-    try {
-      const sessionData = sessionStorage.getItem(STORAGE_KEY);
-      if (sessionData) {
-        const parsedData = JSON.parse(sessionData);
-        return {
-          pages: parsedData.pages || [],
-          categories: parsedData.categories || []
-        };
-      }
-    } catch (error) {
-      console.error('Error reading from sessionStorage:', error);
+    if (categoriesError) {
+      console.error('Error fetching categories:', categoriesError);
+      throw categoriesError;
     }
 
-    // If no session data, try to load from the initial data endpoint
-    try {
-      const response = await fetch('/api/initial-data');
-      if (response.ok) {
-        const initialData = await response.json();
-        // Save to sessionStorage for this session
-        try {
-          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(initialData));
-        } catch (error) {
-          console.error('Error saving to sessionStorage:', error);
-        }
-        return initialData;
-      }
-    } catch (error) {
-      console.error('Error loading initial data:', error);
+    // Fetch pages
+    const { data: pagesData, error: pagesError } = await supabase
+      .from('pages')
+      .select('*')
+      .order('order_index');
+
+    if (pagesError) {
+      console.error('Error fetching pages:', pagesError);
+      throw pagesError;
     }
+
+    return {
+      categories: (categoriesData || []).map(transformCategory),
+      pages: (pagesData || []).map(transformPage),
+    };
+  } catch (error) {
+    console.error('Error loading data from Supabase:', error);
+    return {
+      categories: [],
+      pages: [],
+    };
   }
-  
-  // Fallback to default empty structure
-  return defaultData;
 }
 
 export async function saveStorageData(data: AppState): Promise<void> {
-  // In development, save to file system
-  if (process.env.NODE_ENV === 'development' && !isBrowser) {
-    try {
-      const { promises: fs } = await import('fs');
-      const path = await import('path');
-      const DATA_FILE = path.join(process.cwd(), 'data.json');
-      await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
-    } catch (error) {
-      console.error('Error writing to file system:', error);
-    }
-  }
+  try {
+    // Save categories
+    if (data.categories.length > 0) {
+      const { error: categoriesError } = await supabase
+        .from('categories')
+        .upsert(data.categories.map(transformCategoryForDB));
 
-  // In browser environment, save to sessionStorage
-  if (isBrowser) {
-    try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (error) {
-      console.error('Error saving to sessionStorage:', error);
-      throw new Error('Failed to save data');
+      if (categoriesError) {
+        console.error('Error saving categories:', categoriesError);
+        throw categoriesError;
+      }
     }
+
+    // Save pages
+    if (data.pages.length > 0) {
+      const { error: pagesError } = await supabase
+        .from('pages')
+        .upsert(data.pages.map(transformPageForDB));
+
+      if (pagesError) {
+        console.error('Error saving pages:', pagesError);
+        throw pagesError;
+      }
+    }
+  } catch (error) {
+    console.error('Error saving data to Supabase:', error);
+    throw error;
   }
 }
 
 export async function savePage(page: Page): Promise<void> {
-  const data = await getStorageData();
-  const existingIndex = data.pages.findIndex(p => p.id === page.id);
-  
-  if (existingIndex >= 0) {
-    data.pages[existingIndex] = page;
-  } else {
-    data.pages.push(page);
+  try {
+    const { error } = await supabase
+      .from('pages')
+      .upsert(transformPageForDB(page));
+
+    if (error) {
+      console.error('Error saving page:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error saving page to Supabase:', error);
+    throw error;
   }
-  
-  await saveStorageData(data);
 }
 
 export async function deletePage(pageId: string): Promise<void> {
-  const data = await getStorageData();
-  data.pages = data.pages.filter(p => p.id !== pageId);
-  await saveStorageData(data);
+  try {
+    const { error } = await supabase
+      .from('pages')
+      .delete()
+      .eq('id', pageId);
+
+    if (error) {
+      console.error('Error deleting page:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error deleting page from Supabase:', error);
+    throw error;
+  }
 }
 
 export async function saveCategory(category: Category): Promise<void> {
-  const data = await getStorageData();
-  const existingIndex = data.categories.findIndex(c => c.id === category.id);
-  
-  if (existingIndex >= 0) {
-    data.categories[existingIndex] = category;
-  } else {
-    data.categories.push(category);
+  try {
+    const { error } = await supabase
+      .from('categories')
+      .upsert(transformCategoryForDB(category));
+
+    if (error) {
+      console.error('Error saving category:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error saving category to Supabase:', error);
+    throw error;
   }
-  
-  await saveStorageData(data);
 }
 
 export async function deleteCategory(categoryId: string): Promise<void> {
-  const data = await getStorageData();
-  data.categories = data.categories.filter(c => c.id !== categoryId);
-  await saveStorageData(data);
+  try {
+    const { error } = await supabase
+      .from('categories')
+      .delete()
+      .eq('id', categoryId);
+
+    if (error) {
+      console.error('Error deleting category:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error deleting category from Supabase:', error);
+    throw error;
+  }
 }
