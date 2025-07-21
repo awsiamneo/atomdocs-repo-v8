@@ -4,86 +4,90 @@ import { Category, Page, AppState } from '@/types';
 const isBrowser = typeof window !== 'undefined';
 const STORAGE_KEY = 'atom-docs-data';
 
+// Default data structure
+const defaultData: AppState = {
+  pages: [],
+  categories: []
+};
+
 export async function getStorageData(): Promise<AppState> {
-  // In browser environment, use localStorage
-  if (isBrowser) {
+  // In development, try to read from file system first
+  if (process.env.NODE_ENV === 'development' && !isBrowser) {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsedData = JSON.parse(stored);
+      const { promises: fs } = await import('fs');
+      const path = await import('path');
+      const DATA_FILE = path.join(process.cwd(), 'data.json');
+      const data = await fs.readFile(DATA_FILE, 'utf8');
+      const parsedData = JSON.parse(data);
+      
+      return {
+        pages: parsedData.pages || [],
+        categories: parsedData.categories || []
+      };
+    } catch (error) {
+      console.error('Error reading data file:', error);
+    }
+  }
+
+  // In browser environment (both dev and prod), use in-memory storage with persistence
+  if (isBrowser) {
+    // Check if we have data in sessionStorage first (survives page reloads)
+    try {
+      const sessionData = sessionStorage.getItem(STORAGE_KEY);
+      if (sessionData) {
+        const parsedData = JSON.parse(sessionData);
         return {
           pages: parsedData.pages || [],
           categories: parsedData.categories || []
         };
       }
     } catch (error) {
-      console.error('Error reading from localStorage:', error);
+      console.error('Error reading from sessionStorage:', error);
     }
-    
-    // If no data in localStorage, try to load initial data from API
+
+    // If no session data, try to load from the initial data endpoint
     try {
       const response = await fetch('/api/initial-data');
       if (response.ok) {
         const initialData = await response.json();
-        // Save to localStorage for future use
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(initialData));
+        // Save to sessionStorage for this session
+        try {
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(initialData));
+        } catch (error) {
+          console.error('Error saving to sessionStorage:', error);
+        }
         return initialData;
       }
     } catch (error) {
       console.error('Error loading initial data:', error);
     }
-    
-    // Return empty structure as fallback
-    return {
-      pages: [],
-      categories: []
-    };
   }
   
-  // Server-side: try to read from file system (development only)
-  try {
-    const { promises: fs } = await import('fs');
-    const path = await import('path');
-    const DATA_FILE = path.join(process.cwd(), 'data.json');
-    const data = await fs.readFile(DATA_FILE, 'utf8');
-    const parsedData = JSON.parse(data);
-    
-    // Ensure the data has the correct structure
-    return {
-      pages: parsedData.pages || [],
-      categories: parsedData.categories || []
-    };
-  } catch (error) {
-    console.error('Error reading data file:', error);
-    // If file doesn't exist or is invalid, return empty structure
-    return {
-      pages: [],
-      categories: []
-    };
-  }
+  // Fallback to default empty structure
+  return defaultData;
 }
 
 export async function saveStorageData(data: AppState): Promise<void> {
-  // In browser environment, use localStorage
-  if (isBrowser) {
+  // In development, save to file system
+  if (process.env.NODE_ENV === 'development' && !isBrowser) {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      return;
+      const { promises: fs } = await import('fs');
+      const path = await import('path');
+      const DATA_FILE = path.join(process.cwd(), 'data.json');
+      await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
     } catch (error) {
-      console.error('Error saving to localStorage:', error);
-      throw new Error('Failed to save data to localStorage');
+      console.error('Error writing to file system:', error);
     }
   }
-  
-  // Server-side: try to write to file system (development only)
-  try {
-    const { promises: fs } = await import('fs');
-    const path = await import('path');
-    const DATA_FILE = path.join(process.cwd(), 'data.json');
-    await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
-  } catch (error) {
-    console.error('Error writing to file system:', error);
-    // In production, this will fail silently since we're using localStorage
+
+  // In browser environment, save to sessionStorage
+  if (isBrowser) {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (error) {
+      console.error('Error saving to sessionStorage:', error);
+      throw new Error('Failed to save data');
+    }
   }
 }
 

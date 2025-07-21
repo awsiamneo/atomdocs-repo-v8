@@ -1,59 +1,203 @@
-'use client';
+import { AppState, Page, Category } from '@/types';
 
-import Link from 'next/link';
-import Image from 'next/image';
-import { FileText, Settings } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { SearchDialog } from './search-dialog';
-import { ThemeToggle } from './theme-toggle';
-import { useTheme } from './theme-provider';
+// Client-side API functions for interacting with the data
+export const fetchData = async (): Promise<AppState> => {
+  // Check if we're in browser and have data in localStorage
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem('atom-docs-data');
+      if (stored) {
+        const parsedData = JSON.parse(stored);
+        return {
+          pages: parsedData.pages || [],
+          categories: parsedData.categories || []
+        };
+      }
+    } catch (error) {
+      console.error('Error reading from localStorage:', error);
+    }
+  }
+  
+  // Check if we're in browser and have data in localStorage
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem('atom-docs-data');
+      if (stored) {
+        const parsedData = JSON.parse(stored);
+        return {
+          pages: parsedData.pages || [],
+          categories: parsedData.categories || []
+        };
+      }
+    } catch (error) {
+      console.error('Error reading from localStorage:', error);
+    }
+  }
+  
+  try {
+    // Try to get data from API first
+    let response = await fetch('/api/data');
+    
+    // If API fails, try initial data endpoint
+    if (!response.ok) {
+      response = await fetch('/api/initial-data');
+    }
+    // Try to get data from API first
+    let response = await fetch('/api/data');
+    
+    // If API fails, try initial data endpoint
+    if (!response.ok) {
+      response = await fetch('/api/initial-data');
+    }
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch data');
+    }
+    
+    const data = await response.json();
+    
+    // Save to localStorage for future use
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('atom-docs-data', JSON.stringify(data));
+      } catch (error) {
+        console.error('Error saving to localStorage:', error);
+      }
+    }
+    
+    
+    const data = await response.json();
+    
+    // Save to localStorage for future use
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('atom-docs-data', JSON.stringify(data));
+      } catch (error) {
+        console.error('Error saving to localStorage:', error);
+      }
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    // Return default state as fallback
+    return {
+      pages: [],
+      categories: []
+    };
+  }
+};
 
-interface HeaderProps {
-  isEditMode: boolean;
-}
+export const saveData = async (data: AppState): Promise<void> => {
+  // Save to localStorage first
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('atom-docs-data', JSON.stringify(data));
+    } catch (error) {
+      console.error('Error saving to localStorage:', error);
+    }
+  }
+  
+  // Try to save via API (will work in development, fail silently in production)
+  // Save to localStorage first
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('atom-docs-data', JSON.stringify(data));
+    } catch (error) {
+      console.error('Error saving to localStorage:', error);
+    }
+  }
+  
+  // Try to save via API (will work in development, fail silently in production)
+  try {
+    const response = await fetch('/api/data', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
 
-export function Header({ isEditMode }: HeaderProps) {
-  const { theme } = useTheme();
+    // Don't throw error if API fails in production
+    if (!response.ok) {
+      console.warn('API save failed, data saved to localStorage only');
+    }
+    }
+  } catch (error) {
+    }
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error saving data:', error);
+      throw error;
+    } else {
+      console.warn('API save failed in production, data saved to session only');
+    }
+  }
+};
 
-  return (
-    <header className="sticky top-0 z-50 w-full glass-header shadow-md dark:shadow-none ">
-      <div className="container mx-auto px-4 h-14 flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <Link href="/" className="flex items-center gap-2">
-            <Image
-              src={theme === 'light' ? "/images/logo-dark.png" : "/images/light.png"}
-              alt="Atom Code Docs Logo"
-              width={24}
-              height={24}
-              className="h-6 w-6"
-              key={theme}
-            />
-            <span className="font-bold">Atom Code Docs</span>
-          </Link>
+export const savePage = async (page: Page): Promise<void> => {
+  try {
+    const response = await fetch('/api/pages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(page),
+    });
 
-          {isEditMode && (
-            <Badge variant="outline" className="text-xs glass">
-              Edit Mode
-            </Badge>
-          )}
-        </div>
+    if (!response.ok) {
+      throw new Error('Failed to save page');
+    }
+  } catch (error) {
+    console.error('Error saving page:', error);
+    throw error;
+  }
+};
 
-        <div className="flex items-center gap-4">
-          <SearchDialog />
+export const deletePage = async (id: string): Promise<void> => {
+  try {
+    const response = await fetch(`/api/pages/${id}`, {
+      method: 'DELETE',
+    });
 
-          {isEditMode && (
-            <Button asChild variant="outline" size="sm" className="glass-button">
-              <Link href="/admin">
-                <Settings className="h-4 w-4 mr-2" />
-                Admin
-              </Link>
-            </Button>
-          )}
+    if (!response.ok) {
+      throw new Error('Failed to delete page');
+    }
+  } catch (error) {
+    console.error('Error deleting page:', error);
+    throw error;
+  }
+};
 
-          <ThemeToggle />
-        </div>
-      </div>
-    </header>
-  );
-}
+export const saveCategory = async (category: Category): Promise<void> => {
+  try {
+    const response = await fetch('/api/categories', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(category),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to save category');
+    }
+  } catch (error) {
+    console.error('Error saving category:', error);
+    throw error;
+  }
+};
+
+export const deleteCategory = async (id: string): Promise<void> => {
+  try {
+    const response = await fetch(`/api/categories/${id}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to delete category');
+    }
+  } catch (error) {
+    console.error('Error deleting category:', error);
+    throw error;
+  }
+};
